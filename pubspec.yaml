@@ -19,8 +19,13 @@ dependencies:
   #Persistencia de Datos
   shared_preferences: ^2.5.3
 
-  #proteccion de captura
+  # Proteccion de captura
   no_screenshot: ^0.3.1
+
+  # Generate ID
+  uuid: ^4.5.1
+
+  : ^9.2.4
 
 dev_dependencies:
   flutter_test:

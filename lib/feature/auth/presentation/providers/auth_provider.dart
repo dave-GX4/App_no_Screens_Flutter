@@ -1,12 +1,13 @@
 import 'package:flutter/cupertino.dart';
+import 'package:recordatorios_app/core/services/secure_storage_service.dart';
 import 'package:recordatorios_app/feature/auth/models/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum RegistrationStatus {
-  initial,  // Estado inicial, no se ha intentado nada
-  loading,  // El proceso de registro está en curso
-  success,  // El registro se completó con éxito
-  error     // Ocurrió un error durante el registro
+  initial,
+  loading,
+  success,
+  error
 }
 enum LoginStatus { 
   initial, 
@@ -19,11 +20,34 @@ class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   RegistrationStatus _registrationStatus = RegistrationStatus.initial;
   LoginStatus _loginStatus = LoginStatus.initial;
+  bool _isInitialized = false;
+
+  final SecureStorageService _storageService = SecureStorageService();
 
   User? get currentUser => _currentUser;
   bool get isAuthenticated => _currentUser != null;
   RegistrationStatus get registrationStatus => _registrationStatus;
   LoginStatus get loginStatus => _loginStatus;
+
+  bool get isInitialized => _isInitialized;
+
+  AuthProvider() {
+    _tryAutoLogin();
+  }
+
+  Future<void> _tryAutoLogin() async {
+    final userEmail = await _storageService.getToken();
+
+    if (userEmail != null) {
+      final prefs = await SharedPreferences.getInstance();
+      final userJson = prefs.getString(userEmail);
+      if (userJson != null) {
+        _currentUser = User.fromJson(userJson);
+      }
+    }
+    _isInitialized = true;
+    notifyListeners();
+  }
 
   Future<void> registerUser(String firstname, String lastname, String email, String password) async {
     _registrationStatus = RegistrationStatus.loading;
@@ -60,51 +84,47 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await Future.delayed(const Duration(seconds: 1));
-
       final prefs = await SharedPreferences.getInstance();
-
-      // --- PRINT DE DEPURACIÓN #2 ---
-      // Muestra exactamente la clave que estás usando para buscar.
-      print('BUSCANDO -> Clave: "[${email}]"');
-
       final String? userJson = prefs.getString(email);
 
-      // --- PRINT DE DEPURACIÓN #3 ---
-      // Muestra lo que SharedPreferences encontró con esa clave (o "NADA" si fue null).
-      print('ENCONTRADO -> Valor: ${userJson ?? "NADA"}');
-
-      if (userJson == null) {
-        throw Exception('Usuario no encontrado');
-      }
+      if (userJson == null) throw Exception('Usuario no encontrado');
 
       final user = User.fromJson(userJson);
 
       if (user.password == password) {
         _currentUser = user;
         _loginStatus = LoginStatus.success;
+
+        await _storageService.saveToken(email);
+        await _storageService.saveLastInteractionTime(DateTime.now());
+
       } else {
         throw Exception('Contraseña incorrecta');
       }
-
     } catch (e) {
-      print('Error de inicio de sesión: $e');
       _loginStatus = LoginStatus.error;
     } finally {
       notifyListeners();
     }
   }
 
+  Future<void> logout() async {
+    _currentUser = null;
+    _loginStatus = LoginStatus.initial;
+    
+    await _storageService.deleteToken();
+    
+    print("Sesión cerrada correctamente.");
+    notifyListeners();
+  }
+
   void resetRegistrationStatus() {
     _registrationStatus = RegistrationStatus.initial;
+    notifyListeners();
   }
 
   void resetLoginStatus() {
     _loginStatus = LoginStatus.initial;
-    notifyListeners();
-  }
-  
-  void logout() {
-    _currentUser = null;
     notifyListeners();
   }
 }
